@@ -8,4 +8,4 @@ clean:
 
 util:
 	gcc DALI_app.c -o dali_send
-	gcc DALI_init.c parson.c -o dali_init -lm
+	gcc DALI_init.c parson.c -o dali_init
