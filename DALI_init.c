@@ -29,6 +29,7 @@ char *filename = "config.json";
 int file_size;
 char *file_contents;
 JSON_Value *user_data;
+int fd;
 
 void send_command(int fd, char *command)
 {
@@ -98,7 +99,6 @@ int SearchAndCompare(int fd, u_int32_t addr)
     fds.events = POLLIN;
 
     ret = poll(&fds, 1, 34);
-    // printf("addr: %04x \n", addr);
     switch (ret)
     {
     case -1:
@@ -108,12 +108,44 @@ int SearchAndCompare(int fd, u_int32_t addr)
     default:
         read(fd, buffer, 7);
         res = 1;
-        //printf("buffer %s ", buffer);
-        // printf(" %d \n", fd);
         break;
     }
-    // printf("res: %d \n", res);
     return res;
+}
+int count_bits(unsigned x)
+{
+    int bits = 0;
+    while (x)
+    {
+        if (x & 1U)
+            bits++;
+        x >>= 1;
+    }
+    return bits;
+}
+
+int int_bits(void)
+{
+    return count_bits(~0U);
+}
+
+char *print_nbits(unsigned x, unsigned n)
+{
+    char *out = malloc(n);
+    int i = int_bits();
+    i = (n < i) ? n - 1 : i - 1;
+    for (; i >= 0; i--)
+    {
+        if ((x >> i) & 1U)
+        {
+            out[(n - 1) - i] = '1';
+        }
+        else
+        {
+            out[(n - 1) - i] = '0';
+        }
+    }
+    return out;
 }
 
 int loadConfig()
@@ -164,43 +196,8 @@ int loadConfig()
         return 1;
     }
     fclose(fptr);
-    // printf("%s\n", file_contents);
-    // printf("--------------------------------\n\n");
     user_data = json_parse_string(file_contents);
     free(file_contents);
-    JSON_Object *deviceJson = json_object(user_data);
-    JSON_Array *devArr = json_object_get_array(deviceJson, "devices");
-
-    JSON_Object *grpArr = json_object_get_object(deviceJson, "group");
-    size_t i;
-    for (i = 0; i < json_array_get_count(devArr); i++)
-    {
-        JSON_Object *commit = json_array_get_object(devArr, i);
-        u_int8_t ShortAddr = json_object_get_number(commit, "Short");
-        // printf("Address: %.10s Short: %d\n", json_object_get_string(commit, "Address"), ShortAddr);
-    }
-    for (i = 0; i < json_object_get_count(grpArr); i++)
-    {
-        char *name;
-        asprintf(&name, "%i", i);
-        JSON_Value *grpName = json_object_get_value(grpArr, name);
-        JSON_Array *gArr = json_array(grpName);
-        // JSON_Object *gpArr = json_array_get_object(gArr, 0);
-        // printf("Grp %.10s ", name);
-        free(name);
-        for (size_t j = 0; j < json_array_get_count(gArr); j++)
-        {
-            JSON_Object *groupDev = json_array_get_object(gArr, j);
-            u_int8_t ShortAddr = json_object_get_number(groupDev, "Device");
-            if (ShortAddr <= 15)
-            {
-                // printf("%d ", ShortAddr);
-            }
-        }
-        // printf("\n");
-    }
-
-    // json_value_free(user_data);
 }
 
 void addDeviceToJSON(int SearchAddr, int ShortAddr)
@@ -212,7 +209,6 @@ void addDeviceToJSON(int SearchAddr, int ShortAddr)
     json_array_append_value(devArr, json_parse_string(object));
     char *serialized_string = NULL;
     serialized_string = json_serialize_to_string_pretty(user_data);
-    // puts(serialized_string);
 }
 
 int findShortAddress(int Addr)
@@ -249,13 +245,51 @@ int findLongAddress(int Addr)
     return -1;
 }
 
+void registerGroups()
+{
+    char buffer[7];
+    JSON_Object *deviceJson = json_object(user_data);
+    JSON_Object *grpArr = json_object_get_object(deviceJson, "group");
+    size_t i;
+    for (i = 0; i < json_object_get_count(grpArr); i++)
+    {
+        char *name;
+        asprintf(&name, "%i", i);
+        JSON_Value *grpName = json_object_get_value(grpArr, name);
+        JSON_Array *gArr = json_array(grpName);
+        free(name);
+        printf("Group %d id: ", i);
+        for (size_t j = 0; j < json_array_get_count(gArr); j++)
+        {
+            JSON_Object *groupDev = json_array_get_object(gArr, j);
+            u_int8_t ShortAddr = json_object_get_number(groupDev, "Device");
+            if (ShortAddr <= 64)
+            {
+                char *resp = print_nbits(ShortAddr, 6);
+                char *devID = malloc(6);
+                strcpy(devID, resp);
+                free(resp);
+                char *respG = print_nbits(i, 4);
+                char *GrpAddr = malloc(4);
+                strcpy(GrpAddr, respG);
+                free(respG);
+                char *longAddr = NULL;
+                asprintf(&longAddr, "0%s10110%s", devID, GrpAddr);
+                long hexval = strtol(longAddr, NULL, 2);
+                sprintf(buffer, "%04x", hexval);
+                send_command(fd, &buffer[0]);
+                printf("%d ", ShortAddr);
+            }
+        }
+        printf("\n");
+    }
+}
+
 int main(int argc, char *argv[])
 {
     loadConfig();
-
     struct timeval timeout;
     char buffer[7];
-    int fd;
     int len = 7;
     int ret;
     u_int32_t t;
@@ -352,10 +386,7 @@ int main(int argc, char *argv[])
         }
         ShortAddr++;
     }
-
-
-
-
+    registerGroups();
     send_command(fd, "A100");
     printf("Init complete\n");
 
