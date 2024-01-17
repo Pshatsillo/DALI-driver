@@ -278,6 +278,9 @@ void registerGroups()
                 long hexval = strtol(longAddr, NULL, 2);
                 sprintf(buffer, "%04x", hexval);
                 send_command(fd, &buffer[0]);
+                usleep(90000);
+                send_command(fd, &buffer[0]);
+                usleep(90000);
                 printf("%d ", ShortAddr);
             }
         }
@@ -303,6 +306,13 @@ int main(int argc, char *argv[])
     }
 
     init_search(fd);
+
+                // sprintf(buffer, "0170");
+                // send_command(fd, &buffer[0]);
+                // usleep(90000);
+                // send_command(fd, &buffer[0]);
+                // usleep(90000);
+                // send_command(fd, "A100");
 
     while (ShortAddr < 64)
     {
