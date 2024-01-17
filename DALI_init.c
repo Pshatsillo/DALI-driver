@@ -306,14 +306,6 @@ int main(int argc, char *argv[])
     }
 
     init_search(fd);
-
-                // sprintf(buffer, "0170");
-                // send_command(fd, &buffer[0]);
-                // usleep(90000);
-                // send_command(fd, &buffer[0]);
-                // usleep(90000);
-                // send_command(fd, "A100");
-
     while (ShortAddr < 64)
     {
         if (findShortAddress(ShortAddr) != 0)
