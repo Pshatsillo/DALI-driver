@@ -273,7 +273,23 @@ long getCommand(int shortAddr, int cmd)
     memcpy(command, bitToStringArr, 8);
     char *longAddr = NULL;
     asprintf(&longAddr, "0%c%c%c%c%c%c1%c%c%c%c%c%c%c%c", devID[0], devID[1], devID[2], devID[3], devID[4], devID[5], command[0], command[1], command[2], command[3], command[4], command[5], command[6], command[7]);
-    //printf("Bytestring: %s\n", longAddr);
+    // printf("Bytestring: %s\n", longAddr);
+    long hexval = strtol(longAddr, NULL, 2);
+    return hexval;
+}
+
+long setCommand(int cmd, int value)
+{
+    char buffer[7];
+    print_nbits(cmd, 8);
+    char devID[8];
+    memcpy(devID, bitToStringArr, 8);
+    print_nbits(value, 8);
+    char command[8];
+    memcpy(command, bitToStringArr, 8);
+    char *longAddr = NULL;
+    asprintf(&longAddr, "%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c", devID[0], devID[1], devID[2], devID[3], devID[4], devID[5], devID[6], devID[7], command[0], command[1], command[2], command[3], command[4], command[5], command[6], command[7]);
+    // printf("Bytestring: %s\n", longAddr);
     long hexval = strtol(longAddr, NULL, 2);
     return hexval;
 }
@@ -283,13 +299,15 @@ int main(int argc, char *argv[])
 
     if (argc < 2)
     {
-        printf("Usage: %s add | remove | all <group ID> <Device ID>\n", argv[0]);
+        printf("Usage: %s add | remove | all | set <group ID> <Device ID>\n", argv[0]);
         printf("Example: add 0 2\n");
         printf("add to 0 group device with id 2\n");
         printf("Example: all\n");
         printf("scan config.json and add all devices\n");
         printf("Example: info 0\n");
         printf("Get info about device 0\n");
+        printf("Example: set_minval 0 150\n");
+        printf("Setting minimal value to device 0 value 150\n");
         exit(0);
     }
     // printf("Group: %s ", argv[2]);
@@ -297,13 +315,16 @@ int main(int argc, char *argv[])
     char *p;
     int shortAddr;
     int group;
+    long arg2;
 
-    errno = 0;
-    long parseshortAddr = strtol(argv[3], &p, 10);
-    long parseGroup = strtol(argv[2], &p, 10);
+    if (argc == 4)
+    {
+        arg2 = strtol(argv[3], &p, 10);
+    }
+    long arg1 = strtol(argv[2], &p, 10);
 
-    shortAddr = parseshortAddr;
-    group = parseGroup;
+    shortAddr = arg2;
+    group = arg1;
 
     loadConfig();
     struct timeval timeout;
@@ -337,7 +358,7 @@ int main(int argc, char *argv[])
     // send_command(fd, &buffer[0]);
     // usleep(90000);
     // send_command(fd, "A100");
-    if (argc != 4)
+    if (argc == 4)
     {
         if (strcmp("add", argv[1]) == 0)
         {
@@ -351,6 +372,29 @@ int main(int argc, char *argv[])
             removeFromGroup(group, shortAddr);
             send_command(fd, "A100");
         }
+        if (strcmp("set_minval", argv[1]) == 0)
+        {
+            printf("Setting minimal value %d to ID: %d\n",arg2, arg1);
+            init_search(fd);
+            long hexval = setCommand(163, arg2);
+            sprintf(buffer, "%04x\n", hexval);
+            // sprintf(buffer, "A356");
+            send_command(fd, &buffer[0]);
+            usleep(90000);
+            send_command(fd, &buffer[0]);
+            usleep(90000);
+            hexval = getCommand(arg1, 43);
+            sprintf(buffer, "%04x\n", hexval);
+            // sprintf(buffer, "032B");
+            send_command(fd, &buffer[0]);
+            usleep(90000);
+            send_command(fd, &buffer[0]);
+            usleep(90000);
+            send_command(fd, "A100");
+            //  init_search(fd);
+            //  removeFromGroup(group, shortAddr);
+            //  send_command(fd, "A100");
+        }
     }
     if (strcmp("all", argv[1]) == 0)
     {
@@ -360,10 +404,10 @@ int main(int argc, char *argv[])
     }
     if (strcmp("info", argv[1]) == 0)
     {
-        printf("Device ID: %d\n", parseGroup);
-        long hexval = getCommand(parseGroup, 160);
+        printf("Device ID: %d\n", group);
+        long hexval = getCommand(group, 160);
         sprintf(buffer, "%04x\n", hexval);
-        //printf("Hex: %04x\n", hexval);
+        // printf("Hex: %04x\n", hexval);
         send_command(fd, &buffer[0]);
         int result = waitForAnswer();
         if (result == 1)
@@ -373,7 +417,7 @@ int main(int argc, char *argv[])
             int number = (int)strtol(hex, NULL, 16);
             printf("Actual bright is %d\n", number);
         }
-        hexval = getCommand(parseGroup, 162);
+        hexval = getCommand(group, 162);
         sprintf(buffer, "%04x\n", hexval);
         // printf("Hex: %04x\n", hexval);
         send_command(fd, &buffer[0]);
@@ -385,9 +429,9 @@ int main(int argc, char *argv[])
             int number = (int)strtol(hex, NULL, 16);
             printf("Min bright is %d ", number);
         }
-        hexval = getCommand(parseGroup, 154);
+        hexval = getCommand(group, 154);
         sprintf(buffer, "%04x\n", hexval);
-        //printf("Hex: %04x\n", hexval);
+        // printf("Hex: %04x\n", hexval);
         send_command(fd, &buffer[0]);
         result = waitForAnswer();
         if (result == 1)
@@ -397,7 +441,7 @@ int main(int argc, char *argv[])
             int number = (int)strtol(hex, NULL, 16);
             printf("of pysical %d\n", number);
         }
-        hexval = getCommand(parseGroup, 161);
+        hexval = getCommand(group, 161);
         sprintf(buffer, "%04x\n", hexval);
         // printf("Hex: %04x\n", hexval);
         send_command(fd, &buffer[0]);
@@ -408,6 +452,45 @@ int main(int argc, char *argv[])
             sprintf(hex, "%c%c", receiveBuffer[4], receiveBuffer[5]);
             int number = (int)strtol(hex, NULL, 16);
             printf("Max bright is %d\n", number);
+        }
+
+        hexval = getCommand(group, 192);
+        sprintf(buffer, "%04x\n", hexval);
+        // printf("Hex: %04x\n", hexval);
+        send_command(fd, &buffer[0]);
+        result = waitForAnswer();
+        if (result == 1)
+        {
+            char *hex = malloc(2);
+            sprintf(hex, "%c%c", receiveBuffer[4], receiveBuffer[5]);
+            int number = (int)strtol(hex, NULL, 16);
+            printf("Member of groups: ", number);
+            for (int i = 0; i <= 7; i++)
+            {
+                if ((number >> i) & 1U)
+                {
+                    printf("%d ", i);
+                }
+            }
+        }
+        hexval = getCommand(group, 193);
+        sprintf(buffer, "%04x\n", hexval);
+        // printf("Hex: %04x\n", hexval);
+        send_command(fd, &buffer[0]);
+        result = waitForAnswer();
+        if (result == 1)
+        {
+            char *hex = malloc(2);
+            sprintf(hex, "%c%c", receiveBuffer[4], receiveBuffer[5]);
+            int number = (int)strtol(hex, NULL, 16);
+            for (int i = 0; i <= 7; i++)
+            {
+                if ((number >> i) & 1U)
+                {
+                    printf("%d ", i + 8);
+                }
+            }
+            printf("\n");
         }
     }
 }
