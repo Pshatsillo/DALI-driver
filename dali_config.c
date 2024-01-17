@@ -15,6 +15,7 @@
 #include <time.h>
 #include <stdbool.h>
 #include "parson.h"
+#include <limits.h>
 
 #define DALI_drv "/dev/dali"
 
@@ -29,6 +30,8 @@ int file_size;
 char *file_contents;
 JSON_Value *user_data;
 int fd;
+char bitToStringArr[10];
+//char groupAsBit[4];
 
 void send_command(int fd, char *command)
 {
@@ -71,23 +74,25 @@ int int_bits(void)
     return count_bits(~0U);
 }
 
-char *print_nbits(unsigned x, unsigned n)
+void print_nbits(int x, int n)
 {
-    char *out = malloc(n);
+    memset(&bitToStringArr[0], 0, 10);
     int i = int_bits();
+    int bit;
     i = (n < i) ? n - 1 : i - 1;
     for (; i >= 0; i--)
     {
         if ((x >> i) & 1U)
         {
-            out[(n - 1) - i] = '1';
+            bit = (n - 1) - i;
+            bitToStringArr[(n - 1) - i] = '1';
         }
         else
         {
-            out[(n - 1) - i] = '0';
+            bit = (n - 1) - i;
+            bitToStringArr[(n - 1) - i] = '0';
         }
     }
-    return out;
 }
 
 int loadConfig()
@@ -144,6 +149,7 @@ int loadConfig()
 
 void registerGroups()
 {
+    printf("Adding groups and devices from config.json \n");
     char buffer[7];
     JSON_Object *deviceJson = json_object(user_data);
     JSON_Object *grpArr = json_object_get_object(deviceJson, "group");
@@ -162,31 +168,102 @@ void registerGroups()
             u_int8_t ShortAddr = json_object_get_number(groupDev, "Device");
             if (ShortAddr <= 64)
             {
-                char *resp = print_nbits(ShortAddr, 6);
-                char *devID = malloc(6);
-                strcpy(devID, resp);
-                free(resp);
-                char *respG = print_nbits(i, 4);
-                char *GrpAddr = malloc(4);
-                strcpy(GrpAddr, respG);
-                free(respG);
+                print_nbits(ShortAddr, 6);
+                char devID[7]; 
+                strcpy(devID, bitToStringArr);
+                print_nbits(i, 4);
+                char GrpAddr[5];
+                strcpy(GrpAddr, bitToStringArr);
                 char *longAddr = NULL;
-                asprintf(&longAddr, "0%s10110%s", devID, GrpAddr);
+                asprintf(&longAddr, "0%c%c%c%c%c%c10110%c%c%c%c", devID[0],devID[1],devID[2],devID[3],devID[4],devID[5], GrpAddr[0],GrpAddr[1],GrpAddr[2],GrpAddr[3]);
                 long hexval = strtol(longAddr, NULL, 2);
+                printf("Bytestring: %s ", longAddr);
+                printf("hex: %04x ", hexval);
                 sprintf(buffer, "%04x", hexval);
                 send_command(fd, &buffer[0]);
                 usleep(90000);
                 send_command(fd, &buffer[0]);
                 usleep(90000);
-                printf("%d ", ShortAddr);
             }
         }
         printf("\n");
     }
 }
 
+void removeFromGroup(int group, int shortAddr)
+{
+    char buffer[7];
+    printf("Removing from group %d device %d\n", group, shortAddr);
+    print_nbits(shortAddr, 6);
+    char devID[7]; 
+    strcpy(devID, bitToStringArr);
+    //puts(devID);
+    print_nbits(group, 4);
+    char GrpAddr[5];
+    strcpy(GrpAddr, bitToStringArr);
+    //puts(GrpAddr);
+    char *longAddr = NULL;
+    asprintf(&longAddr, "0%c%c%c%c%c%c10111%c%c%c%c", devID[0],devID[1],devID[2],devID[3],devID[4],devID[5], GrpAddr[0],GrpAddr[1],GrpAddr[2],GrpAddr[3]);
+    printf("Bytestring: %s\n", longAddr);
+    long hexval = strtol(longAddr, NULL, 2);
+    sprintf(buffer, "%04x\n", hexval);
+    printf("hex: %04x\n", hexval);
+    send_command(fd, &buffer[0]);
+    usleep(90000);
+    send_command(fd, &buffer[0]);
+    usleep(90000);
+}
+
+void addToGroup(int group, int shortAddr)
+{
+    char buffer[7];
+    printf("Adding to group %d device %d\n", group, shortAddr);
+    print_nbits(shortAddr, 6);
+    char devID[6]; 
+    memcpy(devID, bitToStringArr,6);
+    //puts(devID);
+    print_nbits(group, 4);
+    char GrpAddr[4];
+    memcpy(GrpAddr, bitToStringArr,4);
+    //strcpy(GrpAddr, bitToStringArr);
+    //puts(GrpAddr);
+    char *longAddr = NULL;
+    asprintf(&longAddr, "0%c%c%c%c%c%c10110%c%c%c%c",devID[0],devID[1],devID[2],devID[3],devID[4],devID[5],GrpAddr[0],GrpAddr[1],GrpAddr[2],GrpAddr[3]); //%c%c%c%c%c%c  devID[0],devID[1],devID[2],devID[3],devID[4],devID[5],
+    printf("Bytestring: %s\n", longAddr);
+    long hexval = strtol(longAddr, NULL, 2);
+    sprintf(buffer, "%04x\n", hexval);
+    printf("Hex: %04x\n", hexval);
+    send_command(fd, &buffer[0]);
+    usleep(90000);
+    send_command(fd, &buffer[0]);
+    usleep(90000);
+}
+
 int main(int argc, char *argv[])
 {
+
+    if (argc != 4)
+    {
+        printf("Usage: %s add | remove | all <group ID> <Device ID>\n", argv[0]);
+        printf("Example: add 0 2\n");
+        printf("add to 0 group device with id 2\n");
+        printf("all 0 0 \n");
+        printf("scan config.json and add all devices\n");
+        exit(0);
+    }
+    printf("Group: %s ", argv[2]);
+    printf("Device: %s\n", argv[3]);
+    char *p;
+    int shortAddr;
+    int group;
+
+    errno = 0;
+    long parseshortAddr = strtol(argv[3], &p, 10);
+    long parseGroup = strtol(argv[2], &p, 10);
+
+    shortAddr = parseshortAddr;
+    group = parseGroup;
+
     loadConfig();
     struct timeval timeout;
     char buffer[7];
@@ -203,12 +280,25 @@ int main(int argc, char *argv[])
     }
 
     init_search(fd);
-                // sprintf(buffer, "0170");
-                // send_command(fd, &buffer[0]);
-                // usleep(90000);
-                // send_command(fd, &buffer[0]);
-                // usleep(90000);
-                // send_command(fd, "A100");
-    registerGroups();
+    // sprintf(buffer, "0370");
+    // send_command(fd, &buffer[0]);
+    // usleep(90000);
+    // send_command(fd, &buffer[0]);
+    // usleep(90000);
+    // send_command(fd, "A100");
+    // registerGroups();
+    // addToGroup(group, shortAddr);
+    if (strcmp("add", argv[1]) == 0)
+    {
+        addToGroup(group, shortAddr);
+    }
+    if (strcmp("remove", argv[1]) == 0)
+    {
+        removeFromGroup(group, shortAddr);
+    }
+    if (strcmp("all", argv[1]) == 0)
+    {
+        registerGroups();
+    }
     send_command(fd, "A100");
 }
