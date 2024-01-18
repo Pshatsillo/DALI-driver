@@ -22,14 +22,15 @@ static u_int8_t seq = 0;
 static u_int8_t ShortAddr = 0;
 FILE *fptr;
 static bool hasFile = false;
-char devices[10][64];
-
+static bool readonly = false;
+char receiveBuffer[7];
 struct stat filestatus;
 char *filename = "config.json";
 int file_size;
 char *file_contents;
 JSON_Value *user_data;
 int fd;
+char bitToStringArr[10];
 
 void send_command(int fd, char *command)
 {
@@ -56,11 +57,14 @@ void init_search(int fd)
     usleep(90000);
     if (!hasFile)
     {
-        send_command(fd, "A700");
-        usleep(90000);
+        if (!readonly)
+        {
+            send_command(fd, "A700");
+            usleep(90000);
 
-        send_command(fd, "A700");
-        usleep(90000);
+            send_command(fd, "A700");
+            usleep(90000);
+        }
     }
 }
 
@@ -129,23 +133,25 @@ int int_bits(void)
     return count_bits(~0U);
 }
 
-char *print_nbits(unsigned x, unsigned n)
+void print_nbits(unsigned x, unsigned n)
 {
-    char *out = malloc(n);
+    memset(&bitToStringArr[0], 0, 10);
     int i = int_bits();
+    int bit;
     i = (n < i) ? n - 1 : i - 1;
     for (; i >= 0; i--)
     {
         if ((x >> i) & 1U)
         {
-            out[(n - 1) - i] = '1';
+            bit = (n - 1) - i;
+            bitToStringArr[(n - 1) - i] = '1';
         }
         else
         {
-            out[(n - 1) - i] = '0';
+            bit = (n - 1) - i;
+            bitToStringArr[(n - 1) - i] = '0';
         }
     }
-    return out;
 }
 
 int loadConfig()
@@ -265,27 +271,49 @@ void registerGroups()
             u_int8_t ShortAddr = json_object_get_number(groupDev, "Device");
             if (ShortAddr <= 64)
             {
-                char *resp = print_nbits(ShortAddr, 6);
-                char *devID = malloc(6);
-                strcpy(devID, resp);
-                free(resp);
-                char *respG = print_nbits(i, 4);
-                char *GrpAddr = malloc(4);
-                strcpy(GrpAddr, respG);
-                free(respG);
+                print_nbits(ShortAddr, 6);
+                char devID[7];
+                strcpy(devID, bitToStringArr);
+                print_nbits(i, 4);
+                char GrpAddr[5];
+                strcpy(GrpAddr, bitToStringArr);
                 char *longAddr = NULL;
-                asprintf(&longAddr, "0%s10110%s", devID, GrpAddr);
+                asprintf(&longAddr, "0%c%c%c%c%c%c10110%c%c%c%c", devID[0], devID[1], devID[2], devID[3], devID[4], devID[5], GrpAddr[0], GrpAddr[1], GrpAddr[2], GrpAddr[3]);
                 long hexval = strtol(longAddr, NULL, 2);
+                printf("Bytestring: %s ", longAddr);
+                printf("hex: %04x ", hexval);
                 sprintf(buffer, "%04x", hexval);
                 send_command(fd, &buffer[0]);
                 usleep(90000);
                 send_command(fd, &buffer[0]);
                 usleep(90000);
-                printf("%d ", ShortAddr);
             }
         }
         printf("\n");
     }
+}
+
+int waitForAnswer()
+{
+    struct pollfd fds;
+    int ret;
+    int res = 0;
+    fds.fd = fd;
+    fds.events = POLLIN;
+
+    ret = poll(&fds, 1, 34);
+    switch (ret)
+    {
+    case -1:
+        break;
+    case 0:
+        break;
+    default:
+        read(fd, receiveBuffer, 7);
+        res = 1;
+        break;
+    }
+    return res;
 }
 
 int main(int argc, char *argv[])
@@ -304,99 +332,211 @@ int main(int argc, char *argv[])
         printf(" fd = %d \n", fd);
         return 0;
     }
-
-    init_search(fd);
-    while (ShortAddr < 64)
+    if (argc > 1)
     {
-        if (findShortAddress(ShortAddr) != 0)
+        if (strcmp("readonly", argv[1]) == 0)
         {
-            u_int32_t SearchAddr = 0xFFFFFF;
-            u_int8_t Response = 0;
-            u_int32_t LowLimit = 0;
-            u_int32_t HighLimit = 0x1000000;
-            Response = SearchAndCompare(fd, SearchAddr);
-            if (Response)
+            printf("Scanning network in readonly mode\n");
+            readonly = true;
+            init_search(fd);
+            while (ShortAddr < 64)
             {
-                printf("Device detected, address searching...\n");
-                if (!SearchAndCompare(fd, SearchAddr - 1))
+                if (findShortAddress(ShortAddr) != 0)
                 {
-                    SearchAndCompare(fd, SearchAddr);
-                    int findShortAddr = findLongAddress(SearchAddr);
-                    if (findShortAddr == -1)
+                    u_int32_t SearchAddr = 0xFFFFFF;
+                    u_int8_t Response = 0;
+                    u_int32_t LowLimit = 0;
+                    u_int32_t HighLimit = 0x1000000;
+                    Response = SearchAndCompare(fd, SearchAddr);
+                    if (Response)
                     {
-                        sprintf(buffer, "B7%02x", ((ShortAddr << 1) | 1));
-                        send_command(fd, &buffer[0]);
-                        usleep(102582);
-                        send_command(fd, "AB00");
-                        usleep(34194);
-                        printf("24-bit address found first %06x - assigning short address %d\n", SearchAddr, ShortAddr);
-                        addDeviceToJSON(SearchAddr, ShortAddr);
-                        break;
+                        printf("Device detected, address searching...\n");
+                        if (!SearchAndCompare(fd, SearchAddr - 1))
+                        {
+                            SearchAndCompare(fd, SearchAddr);
+                            sprintf(buffer, "BB00");
+                            send_command(fd, &buffer[0]);
+                            usleep(102582);
+                            int result = waitForAnswer();
+                            if (result == 1)
+                            {
+                                char *hex = malloc(2);
+                                sprintf(hex, "%c%c", receiveBuffer[4], receiveBuffer[5]);
+                                int number = (int)strtol(hex, NULL, 16);
+                                print_nbits(number, 8);
+                                char shortAddr[8];
+                                strcpy(shortAddr, bitToStringArr);
+                                char *longAddr = NULL;
+                                asprintf(&longAddr, "%c%c%c%c%c%c%c", shortAddr[0], shortAddr[1], shortAddr[2], shortAddr[3], shortAddr[4], shortAddr[5], shortAddr[6]);
+                                long hexval = strtol(longAddr, NULL, 2);
+                                printf("24-bit address found %06x - assigning short address %d\n", SearchAddr, hexval);
+                                int findShortAddr = findLongAddress(SearchAddr);
+                                if (findShortAddr == -1)
+                                {
+                                    addDeviceToJSON(SearchAddr, hexval);
+                                }
+                            }
+                            send_command(fd, "AB00");
+                            usleep(34194);
+                            break;
+                        }
                     }
                     else
                     {
-                        sprintf(buffer, "B7%02x", ((findShortAddr << 1) | 1));
-                        send_command(fd, &buffer[0]);
-                        usleep(102582);
-                        send_command(fd, "AB00");
-                        usleep(34194);
-                        printf("Founded first in config address %06x - assigned short address %d\n", SearchAddr, findShortAddr);
+                        printf("No devices detected\n");
+                        break;
                     }
+
+                    while (1)
+                    {
+                        SearchAddr = (long)((LowLimit + HighLimit) / 2);
+                        Response = SearchAndCompare(fd, SearchAddr);
+
+                        if (Response)
+                        {
+                            if ((SearchAddr == 0) || (!SearchAndCompare(fd, SearchAddr - 1)))
+                                break;
+                            HighLimit = SearchAddr;
+                        }
+                        else
+                            LowLimit = SearchAddr;
+                    }
+                    SearchAndCompare(fd, SearchAddr);
+                    sprintf(buffer, "BB00");
+                    send_command(fd, &buffer[0]);
+                    usleep(102582);
+                    int result = waitForAnswer();
+                    if (result == 1)
+                    {
+                        char *hex = malloc(2);
+                        sprintf(hex, "%c%c", receiveBuffer[4], receiveBuffer[5]);
+                        int number = (int)strtol(hex, NULL, 16);
+                        print_nbits(number, 8);
+                        char shortAddr[8];
+                        strcpy(shortAddr, bitToStringArr);
+                        char *longAddr = NULL;
+                        asprintf(&longAddr, "%c%c%c%c%c%c%c", shortAddr[0], shortAddr[1], shortAddr[2], shortAddr[3], shortAddr[4], shortAddr[5], shortAddr[6]);
+                        long hexval = strtol(longAddr, NULL, 2);
+                        printf("24-bit address found %06x - assigning short address %d\n", SearchAddr, hexval);
+                        int findShortAddr = findLongAddress(SearchAddr);
+                        if (findShortAddr == -1)
+                        {
+                            addDeviceToJSON(SearchAddr, hexval);
+                        }
+                    }
+                    send_command(fd, "AB00");
+                    usleep(34194);
                 }
+                ShortAddr++;
             }
-            else
-            {
-                printf("No devices detected\n");
-                break;
-            }
+            registerGroups();
+            send_command(fd, "A100");
+            printf("Init complete\n");
 
-            while (1)
+            if (0 != close(fd))
             {
-                SearchAddr = (long)((LowLimit + HighLimit) / 2);
+                perror("Could not close device\n");
+            }
+            json_serialize_to_file_pretty(user_data, filename);
+            json_value_free(user_data);
+            return 0;
+        }
+    }
+    else
+    {
+        init_search(fd);
+        while (ShortAddr < 64)
+        {
+            if (findShortAddress(ShortAddr) != 0)
+            {
+                u_int32_t SearchAddr = 0xFFFFFF;
+                u_int8_t Response = 0;
+                u_int32_t LowLimit = 0;
+                u_int32_t HighLimit = 0x1000000;
                 Response = SearchAndCompare(fd, SearchAddr);
-
                 if (Response)
                 {
-                    if ((SearchAddr == 0) || (!SearchAndCompare(fd, SearchAddr - 1)))
-                        break;
-                    HighLimit = SearchAddr;
+                    printf("Device detected, address searching...\n");
+                    if (!SearchAndCompare(fd, SearchAddr - 1))
+                    {
+                        SearchAndCompare(fd, SearchAddr);
+                        int findShortAddr = findLongAddress(SearchAddr);
+                        if (findShortAddr == -1)
+                        {
+                            sprintf(buffer, "B7%02x", ((ShortAddr << 1) | 1));
+                            send_command(fd, &buffer[0]);
+                            usleep(102582);
+                            send_command(fd, "AB00");
+                            usleep(34194);
+                            printf("24-bit address found first %06x - assigning short address %d\n", SearchAddr, ShortAddr);
+                            addDeviceToJSON(SearchAddr, ShortAddr);
+                            break;
+                        }
+                        else
+                        {
+                            sprintf(buffer, "B7%02x", ((findShortAddr << 1) | 1));
+                            send_command(fd, &buffer[0]);
+                            usleep(102582);
+                            send_command(fd, "AB00");
+                            usleep(34194);
+                            printf("Founded first in config address %06x - assigned short address %d\n", SearchAddr, findShortAddr);
+                        }
+                    }
                 }
                 else
-                    LowLimit = SearchAddr;
-            }
-            SearchAndCompare(fd, SearchAddr);
-            int findShortAddr = findLongAddress(SearchAddr);
-            if (findShortAddr == -1)
-            {
-                sprintf(buffer, "B7%02x", ((ShortAddr << 1) | 1));
-                send_command(fd, &buffer[0]);
-                usleep(102582);
-                send_command(fd, "AB00");
-                usleep(34194);
-                printf("24-bit address found second %06x - assigning short address %d\n", SearchAddr, ShortAddr);
-                addDeviceToJSON(SearchAddr, ShortAddr);
-            }
-            else
-            {
-                sprintf(buffer, "B7%02x", ((findShortAddr << 1) | 1));
-                send_command(fd, &buffer[0]);
-                usleep(102582);
-                send_command(fd, "AB00");
-                usleep(34194);
-                printf("Founded second in config address %06x - assigned short address %d\n", SearchAddr, findShortAddr);
-            }
-        }
-        ShortAddr++;
-    }
-    registerGroups();
-    send_command(fd, "A100");
-    printf("Init complete\n");
+                {
+                    printf("No devices detected\n");
+                    break;
+                }
 
-    if (0 != close(fd))
-    {
-        perror("Could not close device\n");
+                while (1)
+                {
+                    SearchAddr = (long)((LowLimit + HighLimit) / 2);
+                    Response = SearchAndCompare(fd, SearchAddr);
+
+                    if (Response)
+                    {
+                        if ((SearchAddr == 0) || (!SearchAndCompare(fd, SearchAddr - 1)))
+                            break;
+                        HighLimit = SearchAddr;
+                    }
+                    else
+                        LowLimit = SearchAddr;
+                }
+                SearchAndCompare(fd, SearchAddr);
+                int findShortAddr = findLongAddress(SearchAddr);
+                if (findShortAddr == -1)
+                {
+                    sprintf(buffer, "B7%02x", ((ShortAddr << 1) | 1));
+                    send_command(fd, &buffer[0]);
+                    usleep(102582);
+                    send_command(fd, "AB00");
+                    usleep(34194);
+                    printf("24-bit address found second %06x - assigning short address %d\n", SearchAddr, ShortAddr);
+                    addDeviceToJSON(SearchAddr, ShortAddr);
+                }
+                else
+                {
+                    sprintf(buffer, "B7%02x", ((findShortAddr << 1) | 1));
+                    send_command(fd, &buffer[0]);
+                    usleep(102582);
+                    send_command(fd, "AB00");
+                    usleep(34194);
+                    printf("Founded second in config address %06x - assigned short address %d\n", SearchAddr, findShortAddr);
+                }
+            }
+            ShortAddr++;
+        }
+        registerGroups();
+        send_command(fd, "A100");
+        printf("Init complete\n");
+
+        if (0 != close(fd))
+        {
+            perror("Could not close device\n");
+        }
+        json_serialize_to_file_pretty(user_data, filename);
+        json_value_free(user_data);
+        return 0;
     }
-    json_serialize_to_file_pretty(user_data, filename);
-    json_value_free(user_data);
-    return 0;
 }
