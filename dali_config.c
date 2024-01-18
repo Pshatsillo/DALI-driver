@@ -314,7 +314,7 @@ int main(int argc, char *argv[])
 
     if (argc < 2)
     {
-        printf("Usage: %s add | remove | all | set <group ID>/<device type> <Device ID>\n", argv[0]);
+        printf("Usage: %s add | remove | all <group ID>/<device type> <Device ID>\n", argv[0]);
         printf("Example: add 0 2\n");
         printf("add to 0 group device with id 2\n");
         printf("Example: all\n");
@@ -325,21 +325,8 @@ int main(int argc, char *argv[])
         printf("Setting minimal value to device 0 value 150\n");
         exit(0);
     }
-    // printf("Group: %s ", argv[2]);
-    // printf("Device: %s\n", argv[3]);
+
     char *p;
-    // int shortAddr;
-    // int group;
-    // long arg2;
-
-    // if (argc == 4)
-    // {
-    //     arg2 = strtol(argv[3], &p, 10);
-    // }
-    // long arg1 = strtol(argv[2], &p, 10);
-
-    // shortAddr = arg2;
-    // group = arg1;
 
     loadConfig();
     struct timeval timeout;
