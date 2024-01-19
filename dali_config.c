@@ -237,6 +237,78 @@ void removeFromGroup(int group, int shortAddr)
     usleep(90000);
 }
 
+int isGroupMember(int grp, int shortAddr)
+{
+    JSON_Object *deviceJson = json_object(user_data);
+    JSON_Object *devArr = json_object_get_object(deviceJson, "group");
+    char *name;
+    asprintf(&name, "%i", grp);
+    JSON_Array *devicesInGroups = json_object_get_array(devArr, name);
+    free(name);
+    for (int i = 0; i < json_array_get_count(devicesInGroups); i++)
+    {
+        JSON_Object *devGrpID = json_array_get_object(devicesInGroups, i);
+        if (json_object_get_number(devGrpID, "Device") == shortAddr)
+        {
+            printf("Device %d found in %d group\n", shortAddr, i);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+void addDeviceToJSON(int GroupName, int ShortAddr)
+{
+    JSON_Object *deviceJson = json_object(user_data);
+    JSON_Object *devArr = json_object_get_object(deviceJson, "group");
+    char *name;
+    asprintf(&name, "%i", GroupName);
+    JSON_Array *devicesInGroups = json_object_get_array(devArr, name);
+    free(name);
+    JSON_Object *devGrpID = json_array_get_object(devicesInGroups, 0);
+    if (json_object_get_number(devGrpID, "Device") == 99)
+    {
+        json_object_clear(devGrpID);
+        json_object_set_number(devGrpID, "Device", ShortAddr);
+    }
+    else
+    {
+        if (isGroupMember(GroupName, ShortAddr) == 1)
+        {
+            JSON_Value *newDevValue = json_value_init_object();
+            JSON_Object *newDev = json_value_get_object(newDevValue);
+            json_object_set_number(newDev, "Device", ShortAddr);
+            json_array_append_value(devicesInGroups, newDevValue);
+        }
+    }
+    json_serialize_to_file_pretty(user_data, filename);
+    json_value_free(user_data);
+}
+
+void removeDeviceFromJSON(int GroupName, int ShortAddr)
+{
+    JSON_Object *deviceJson = json_object(user_data);
+    JSON_Object *devArr = json_object_get_object(deviceJson, "group");
+    char *name;
+    asprintf(&name, "%i", GroupName);
+    JSON_Array *devicesInGroups = json_object_get_array(devArr, name);
+    free(name);
+    JSON_Object *devGrpID = json_array_get_object(devicesInGroups, 0);
+        if (isGroupMember(GroupName, ShortAddr) == 0)
+        {
+            for ( int i = 0; i < json_array_get_count(devicesInGroups); i++)
+            {
+                 JSON_Object *devGrpID = json_array_get_object(devicesInGroups, i);
+                 if (json_object_get_number(devGrpID, "Device") == ShortAddr){
+                    json_array_remove(devicesInGroups, i);
+                 }
+            }
+            
+        }
+    json_serialize_to_file_pretty(user_data, filename);
+    json_value_free(user_data);
+}
+
 void addToGroup(int group, int shortAddr)
 {
     char buffer[7];
@@ -369,6 +441,7 @@ int main(int argc, char *argv[])
             init_search(fd);
             addToGroup(arg1, arg2);
             send_command(fd, "A100");
+            addDeviceToJSON(arg1, arg2);
         }
         if (strcmp("remove", argv[1]) == 0)
         {
@@ -377,8 +450,11 @@ int main(int argc, char *argv[])
             init_search(fd);
             removeFromGroup(arg1, arg2);
             send_command(fd, "A100");
+            removeDeviceFromJSON(arg1, arg2);
         }
-    } else if (argc == 5){
+    }
+    else if (argc == 5)
+    {
         if (strcmp("device", argv[2]) == 0)
         {
             if (strcmp("set_minval", argv[1]) == 0)
@@ -425,9 +501,10 @@ int main(int argc, char *argv[])
                 usleep(90000);
                 send_command(fd, "A100");
             }
-        }else if (strcmp("group", argv[2]) == 0)
+        }
+        else if (strcmp("group", argv[2]) == 0)
         {
-             if (strcmp("set_minval", argv[1]) == 0)
+            if (strcmp("set_minval", argv[1]) == 0)
             {
                 long arg3 = strtol(argv[3], &p, 10);
                 long arg4 = strtol(argv[4], &p, 10);
@@ -471,7 +548,7 @@ int main(int argc, char *argv[])
                 usleep(90000);
                 send_command(fd, "A100");
             }
-        } 
+        }
     }
     if (strcmp("all", argv[1]) == 0)
     {
@@ -666,4 +743,5 @@ int main(int argc, char *argv[])
             }
         }
     }
+    return 0;
 }
