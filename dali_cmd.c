@@ -20,10 +20,10 @@ int fd;
 static u_int8_t seq = 0;
 char bitToStringArr[10];
 
-void send_command(int fd, char *command)
+void send_command(int fd, char *command, u_int8_t sequence)
 {
     char buffer[7];
-    sprintf(buffer, "%02x%4s", seq, command);
+    sprintf(buffer, "%02x%4s", sequence, command);
     write(fd, buffer, 6);
     seq += 1;
     if (seq == 0xff)
@@ -182,7 +182,7 @@ int main(int argc, char *argv[])
                 long arg2 = strtol(argv[2], &p, 10);
                 long hexval = getCommand(arg2, 0);
                 sprintf(buffer, "%04x\n", hexval);
-                send_command(fd, &buffer[0]);
+                send_command(fd, &buffer[0], arg2);
             }
             if (strcmp("dim", argv[3]) == 0)
             {
@@ -192,7 +192,7 @@ int main(int argc, char *argv[])
                 {
                     long hexval = setDevDim(arg2, round(arg4 * 2.54));
                     sprintf(buffer, "%04x\n", hexval);
-                    send_command(fd, &buffer[0]);
+                    send_command(fd, &buffer[0], arg2);
                 }
             }
             if (strcmp("dimraw", argv[3]) == 0)
@@ -201,7 +201,7 @@ int main(int argc, char *argv[])
                 long arg4 = strtol(argv[4], &p, 10);
                 long hexval = setDevDim(arg2, arg4);
                 sprintf(buffer, "%04x\n", hexval);
-                send_command(fd, &buffer[0]);
+                send_command(fd, &buffer[0], arg2);
             }
             if (strcmp("status", argv[3]) == 0)
             {
@@ -210,7 +210,7 @@ int main(int argc, char *argv[])
                 long hexval = getCommand(arg3, 160);
                 sprintf(buffer, "%04x\n", hexval);
                 // printf("Hex: %04x\n", hexval);
-                send_command(fd, &buffer[0]);
+                send_command(fd, &buffer[0], arg3);
                 int result = waitForAnswer();
                 if (result == 1)
                 {
@@ -231,7 +231,7 @@ int main(int argc, char *argv[])
                 long arg2 = strtol(argv[2], &p, 10);
                 long hexval = getGrpCommand(arg2, 0);
                 sprintf(buffer, "%04x\n", hexval);
-                send_command(fd, &buffer[0]);
+                send_command(fd, &buffer[0],arg2 + 65);
             }
             if (strcmp("dim", argv[3]) == 0)
             {
@@ -241,7 +241,7 @@ int main(int argc, char *argv[])
                 {
                     long hexval = setGrpDim(arg2, round(arg4 * 2.54));
                     sprintf(buffer, "%04x\n", hexval);
-                    send_command(fd, &buffer[0]);
+                    send_command(fd, &buffer[0], arg2 + 65);
                 }
             }
             if (strcmp("dimraw", argv[3]) == 0)
@@ -252,7 +252,7 @@ int main(int argc, char *argv[])
                 {
                     long hexval = setGrpDim(arg2, arg4);
                     sprintf(buffer, "%04x\n", hexval);
-                    send_command(fd, &buffer[0]);
+                    send_command(fd, &buffer[0], arg2 + 65);
                 }
             }
             if (strcmp("status", argv[3]) == 0)
@@ -262,7 +262,7 @@ int main(int argc, char *argv[])
                 long hexval = getGrpCommand(arg3, 160);
                 sprintf(buffer, "%04x\n", hexval);
                 // printf("Hex: %04x\n", hexval);
-                send_command(fd, &buffer[0]);
+                send_command(fd, &buffer[0], arg3 + 65);
                 int result = waitForAnswer();
                 if (result == 1)
                 {
