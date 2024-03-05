@@ -18,7 +18,6 @@
 #include <linux/timer.h>
 #include <linux/hrtimer.h>
 #include <linux/string.h>
-
 #include <asm/irq.h>
 #include <linux/signal.h>
 #include <linux/sched.h>
@@ -28,6 +27,7 @@
 #include <linux/workqueue.h>
 #include <linux/kthread.h>
 #include <linux/completion.h>
+#include <linux/delay.h> 
 
 //--------------------- define constants --------------------
 
@@ -132,6 +132,7 @@ int64_t fifo_pop(struct fifo * fifo);
 
 // функция обработки очереди на отправку
 static void qDaliSend_worker( struct work_struct *work) {
+    //printk("Sending packet\n");
     work_t *my_work = (work_t *)work;
     uint16_t number; 
     unsigned char  daliCommand[2];
@@ -204,6 +205,7 @@ rx_isr(int irq, void *ptr) {
 // функция чтения данных с шины dali
 static enum hrtimer_restart 
 read_timer_func (struct hrtimer * hrtimer) {
+//printk("reading\n");
 	ktime_t now, n, delta;
 	int val;
 
@@ -383,7 +385,7 @@ fifo_push(struct fifo* fifo, uint64_t data) {
         fifo->length++;
         wake_up_interruptible(&my_wait_queue);
     }
-
+     printk("fifo len: %d\n", fifo->length);
     return res;
 }
 
@@ -401,6 +403,7 @@ fifo_pop(struct fifo* fifo) {
         fifo->length--;
         wake_up_interruptible(&my_wait_queue);
     }
+	printk("fifo len: %d\n", fifo->length);
     return res;
 }
 
@@ -439,6 +442,7 @@ dev_read(struct file* f, const char *buf, size_t count, loff_t *f_pos) {
     	    ret = queue_work(qDaliSend, (struct work_struct *)work);
 		}
     }
+	usleep_range(1000000, 1000001);
     return count;
 }
 
