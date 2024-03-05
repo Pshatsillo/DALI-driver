@@ -385,7 +385,7 @@ fifo_push(struct fifo* fifo, uint64_t data) {
         fifo->length++;
         wake_up_interruptible(&my_wait_queue);
     }
-     printk("fifo len: %d\n", fifo->length);
+     printk("fifo push: %d\n", fifo->length);
     return res;
 }
 
@@ -403,7 +403,23 @@ fifo_pop(struct fifo* fifo) {
         fifo->length--;
         wake_up_interruptible(&my_wait_queue);
     }
-	printk("fifo len: %d\n", fifo->length);
+	if(fifo->length > 5){
+		while (fifo->length != 0)
+		{
+			struct fifo_item* itemToClean = list_entry(fifo->headlist.next, struct fifo_item, list);
+			if(!list_empty(&(fifo->headlist))) {
+        res = itemToClean->data;
+        list_del(&(itemToClean->list));
+        kfree(itemToClean);
+        fifo->length--;
+        wake_up_interruptible(&my_wait_queue);
+    }
+		}
+		
+	
+
+	}
+	printk("fifo pop: %d\n", fifo->length);
     return res;
 }
 
@@ -442,7 +458,7 @@ dev_read(struct file* f, const char *buf, size_t count, loff_t *f_pos) {
     	    ret = queue_work(qDaliSend, (struct work_struct *)work);
 		}
     }
-	usleep_range(1000000, 1000001);
+	usleep_range(200000, 200001);
     return count;
 }
 
