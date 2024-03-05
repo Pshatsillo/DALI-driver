@@ -1,1 +1,0 @@
-cmd_/home/pi/DALI-driver/DALI_driver.ko := ld -r -EL --build-id=sha1  -T scripts/module.lds -o /home/pi/DALI-driver/DALI_driver.ko /home/pi/DALI-driver/DALI_driver.o /home/pi/DALI-driver/DALI_driver.mod.o;  true
