@@ -504,7 +504,7 @@ static int
 init_dali_driver(void) { 
 	int ret;
 
-	printk(KERN_INFO "DALI Driver Kernel Module initialisation v.1\n");
+	printk(KERN_INFO "DALI Driver Kernel Module initialisation v.1.1\n");
 
 	if (!gpio_is_valid(DALI_OUT_PORT)) {
 		printk(KERN_INFO "Invalid output GPIO\n");
