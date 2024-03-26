@@ -458,7 +458,7 @@ dev_read(struct file* f, const char *buf, size_t count, loff_t *f_pos) {
     	    ret = queue_work(qDaliSend, (struct work_struct *)work);
 		}
     }
-	usleep_range(200000, 200001);
+	usleep_range(900000, 900001);
     return count;
 }
 
